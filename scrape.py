@@ -3,8 +3,9 @@ import urllib.request
 import ssl
 import time
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
+import re
 
 
 database = "database.json"
@@ -61,7 +62,7 @@ def scraped():
     url = "https://www.airport-la.com/lax/arrivals?t="
     htmls = dict()
 
-    for i in range(-10,21):
+    for i in range(-20,21):
         with urllib.request.urlopen(url + str(i)) as response:
             html = response.read()
         soup = BeautifulSoup(html, 'html.parser')
@@ -70,7 +71,43 @@ def scraped():
             data = get_table_data(soup)
             htmls[date] = data     
     return htmls 
+    
 
+def convert_to_dt(time, date, tz="PST", year="2020"):
+    """
+    @param time string like 03:31
+    @param date string as shonw in the top of table like Wednesday, 19 February from 20:00 to 22:00 
+    @return datetime object
+    If span across midnight, like "Wednesday, 19 February from 23:00 to 01:00", must add aditional 1 day
+    
+    Example:
+    date = Wednesday, 19 February from 20:00 to 22:00
+    time = 21:31
+    return datetime(2020,02,19,21,31,00,PST)
+
+    date = Wednesday, 19 February from 23:00 to 01:00
+    time = 00:15
+    return datetime(2020,02,20,00,15,00,PST)
+    
+    """
+    
+    date_from_to = re.findall("(.*) +from +(\d+:\d+) +to +(\d+:\d+)", date)
+    
+    if len(date_from_to) != 1 or len(date_from_to[0]) != 3:
+        print("error in date format", date)
+        return None   
+    
+    date_, from_, _ = date_from_to[0]
+    
+    res_dt = datetime.strptime("{} {} {} {}".format(date_, year, time, tz), '%A, %d %B %Y %H:%M %Z')
+    from_dt = datetime.strptime("{} {} {} {}".format(date_, year, from_, tz), '%A, %d %B %Y %H:%M %Z')
+    
+    if res_dt<from_dt:
+        return res_dt + timedelta(days=1)
+    else:
+        return res_dt
+        
+    
 
 def sort_flight_by_time(db, airport_locations, country_code):
     """
@@ -89,27 +126,27 @@ def sort_flight_by_time(db, airport_locations, country_code):
 
     
     for time_scraped, scraped_result in db.items():
-        year = "2020" # TODO: get year from time_scraped
         for table_date, table in scraped_result.items():
-            date_month = table_date.split("from")[0].strip()
-            for row in table:
-                if (row["flight"], date_month) not in seen and row["status"] == "Landed":
-                    seen.add((row["flight"], date_month))          
-                    
-                    location = airport_locations.get(row["airport"].strip(), dict())
-                    flight_object = [
-                        datetime.strptime("{} {} {} PST".format(date_month, year, row["scheduled"]), '%A, %d %B %Y %H:%M %Z'), 
-                        datetime.strptime("{} {} {} PST".format(date_month, year, row["actual"]), '%A, %d %B %Y %H:%M %Z') , 
-                        row["flight"].strip(), 
-                        row["gate"].strip(),
-                        row["airport"].strip(), 
-                        row["city"].strip(), 
-                        country_code.get(location.get("country", ""), ""),
-                        location.get("lat", ""), 
-                        location.get("lon", ""), 
-                        location.get("display_name", "")
-                    ]
+            for row in table:                                                                                 
+                location = airport_locations.get(row["airport"].strip(), dict())
+                flight_object = [
+                    convert_to_dt(row["scheduled"], table_date), 
+                    convert_to_dt(row["actual"], table_date), 
+                    row["flight"].strip(), 
+                    row["gate"].strip(),
+                    row["airport"].strip(), 
+                    row["city"].strip(), 
+                    country_code.get(location.get("country", ""), ""),
+                    location.get("lat", ""), 
+                    location.get("lon", ""), 
+                    location.get("display_name", ""),
+                    row["status"]
+                ]
+                
+                if (flight_object[0].date(), flight_object[2]) not in seen:  # scraped date can be duplicated. 
                     list_of_fligts.append(flight_object)
+                    seen.add((flight_object[0].date(), flight_object[2]))  
+                
                 
     df = pd.DataFrame(list_of_fligts, columns=[
         "dt_scheduled", 
@@ -121,7 +158,8 @@ def sort_flight_by_time(db, airport_locations, country_code):
         "country",
         "lat", 
         "long", 
-        "display name"])
+        "display name",
+        "status"])
     
     df = df.sort_values(by=['dt_scheduled'])
     return df
