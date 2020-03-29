@@ -90,6 +90,9 @@ def convert_to_dt(time, date, tz="PST", year="2020"):
     return datetime(2020,02,20,00,15,00,PST)
     
     """
+    if not date.strip() or not time.strip():
+        print("error in date format", date, time)
+        return None           
     
     date_from_to = re.findall("(.*) +from +(\d+:\d+) +to +(\d+:\d+)", date)
     
@@ -142,8 +145,8 @@ def sort_flight_by_time(db, airport_locations, country_code):
                     location.get("display_name", ""),
                     row["status"]
                 ]
-                
-                if (flight_object[0].date(), flight_object[2]) not in seen:  # scraped date can be duplicated. 
+
+                if (flight_object[0].date(), flight_object[2]) not in seen and row["status"] in {"Landed", "En Route"}:  # scraped date can be duplicated. 
                     list_of_fligts.append(flight_object)
                     seen.add((flight_object[0].date(), flight_object[2]))  
                 
