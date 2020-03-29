@@ -171,7 +171,6 @@ def sort_flight_by_time(db, airport_locations, country_code):
 
 def daily(fname=database):
     now = time.time()
-    print(fname)
     with open(fname, "r") as f:
         old = json.load(f)
 
