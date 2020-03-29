@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timedelta
 import pandas as pd
 import re
+import sys
 
 
 database = "database.json"
@@ -170,15 +171,28 @@ def sort_flight_by_time(db, airport_locations, country_code):
 
 def daily(fname=database):
     now = time.time()
-
-    with open(database, "r") as f:
+    print(fname)
+    with open(fname, "r") as f:
         old = json.load(f)
 
     old[now] = scraped()
 
-    with open(database, "w") as f:
+    with open(fname, "w") as f:
         json.dump(old, f)
         
         
 if __name__ == "__main__":
-    daily()
+    if len(sys.argv) == 1:
+        fname = database
+    elif len(sys.argv) == 2:
+        fname = sys.argv[1]
+    else:
+        print("Invalid Usage")
+        exit()
+    try:
+        daily(fname)
+        print("scrape successfully at", time.time())
+    except Exception as e:
+        print("scrape unsuccessfully at", time.time())
+        print("Unexpected error:", str(e))
+
